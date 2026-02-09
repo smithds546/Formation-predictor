@@ -8,8 +8,15 @@ import pandas as pd
 import time
 import sys
 import argparse
+import os
 
-API_TOKEN = "YagFzMeQBczm2CV8gySFECtbeVrBnrvGhHMpOxnetjfibtxYSHOTyRn74IyJ"
+# Load API token from environment variable
+API_TOKEN = os.getenv("SPORTMONKS_API_TOKEN")
+if not API_TOKEN:
+    print("❌ Error: SPORTMONKS_API_TOKEN environment variable not set")
+    print("   Please set it with: export SPORTMONKS_API_TOKEN='your_token_here'")
+    sys.exit(1)
+
 API_BASE = "https://api.sportmonks.com/v3/football"
 
 def print_step(num, msg):
@@ -36,6 +43,11 @@ def find_danish_league():
 
         if response.status_code != 200:
             print(f"❌ Error fetching leagues: {response.status_code}")
+            try:
+                error_data = response.json()
+                print(f"   Message: {error_data.get('message', 'Unknown error')}")
+            except:
+                print(f"   Response: {response.text[:200]}")
             return None
 
         leagues = response.json().get("data", [])
@@ -450,7 +462,7 @@ def parse_fixtures(fixtures):
 
 def main():
     parser = argparse.ArgumentParser(description='Fetch Danish Superliga fixtures from SportMonks')
-    parser.add_argument('--season-id', type=int, help='Override season ID to fetch')
+    parser.add_argument('--season-id', type=int, nargs='+', help='Override season ID(s) to fetch')
     parser.add_argument('--max-pages', type=int, default=0, help='Max pages to fetch (0 = unlimited)')
     args = parser.parse_args()
 
@@ -465,29 +477,41 @@ def main():
         print("❌ Cannot proceed without valid league")
         return False
 
-    # Step 2: Determine season
+    # Step 2: Determine seasons
+    season_ids = []
     if args.season_id:
-        season_id = args.season_id
-        print_step(2, "Using user-provided season")
-        print(f"✅ Using season ID: {season_id}")
+        season_ids = args.season_id
+        print_step(2, "Using user-provided season(s)")
+        print(f"✅ Using season IDs: {season_ids}")
     else:
         print_step(2, "Finding available season")
-        season_id = find_season(league_id)
+        sid = find_season(league_id)
+        if sid:
+            season_ids = [sid]
 
-    if not season_id:
-        print("❌ Cannot proceed without valid season")
+    if not season_ids:
+        print("❌ Cannot proceed without valid season(s)")
         return False
 
-    # Step 3: Fetch fixtures
-    print_step(3, "Fetching fixtures")
-    fixtures = fetch_all_fixtures(season_id, max_pages=args.max_pages)
-    if not fixtures:
-        print("❌ No fixtures retrieved")
+    # Step 3: Fetch fixtures for all seasons
+    print_step(3, f"Fetching fixtures for {len(season_ids)} season(s)")
+    all_fixtures = []
+    for sid in season_ids:
+        print(f"⏳ Fetching fixtures for season ID: {sid}...")
+        fixtures = fetch_all_fixtures(sid, max_pages=args.max_pages)
+        if fixtures:
+            all_fixtures.extend(fixtures)
+            print(f"✅ Retrieved {len(fixtures)} fixtures for season {sid}")
+        else:
+            print(f"⚠️  No fixtures retrieved for season {sid}")
+
+    if not all_fixtures:
+        print("❌ No fixtures retrieved from any season")
         return False
 
     # Step 4: Parse data
     print_step(4, "Parsing and processing data")
-    df = parse_fixtures(fixtures)
+    df = parse_fixtures(all_fixtures)
 
     if df.empty:
         print("❌ No fixtures could be parsed")
