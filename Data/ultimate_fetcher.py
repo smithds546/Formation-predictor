@@ -548,3 +548,4 @@ if __name__ == "__main__":
         traceback.print_exc()
         sys.exit(1)
 
+#runs in terminal using - python ultimate_fetcher.py --season-id 21644 19686 18334 17328 16020 --max-pages 25
